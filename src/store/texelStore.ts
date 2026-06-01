@@ -490,7 +490,9 @@ export const useTexelStore = create<TexelState>((set, get) => ({
 
   addDesign: async (designData, file, previewFile) => {
     const { supabaseConnected, designs, user } = get();
-    const newId = `d_${Date.now()}`;
+    const newId = typeof window !== 'undefined' && window.crypto?.randomUUID 
+      ? window.crypto.randomUUID() 
+      : `d_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     let previewUrl = designData.previewUrl || 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=800&auto=format&fit=crop&q=80';
     let masterUrl = 'https://encrypted-masters.texel.ai/escrow/' + newId;
 
