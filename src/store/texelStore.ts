@@ -355,6 +355,22 @@ export const useTexelStore = create<TexelState>((set, get) => ({
   connectAsGuest: async () => {
     set({ loading: true, errorMessage: null });
     try {
+      // Try to sign in anonymously first - instant, frictionless, bypasses email confirmation issues!
+      const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
+        options: {
+          data: {
+            name: 'Guest Operator',
+            region: 'Mumbai, India'
+          }
+        }
+      });
+      
+      if (!anonError && anonData?.session) {
+        return; // Success!
+      }
+      
+      console.warn('Anonymous sign in failed, trying guest account fallback...', anonError?.message);
+
       const email = 'guest.operator@texel.ai';
       const password = 'TexelSecretPass123!';
       
@@ -480,11 +496,10 @@ export const useTexelStore = create<TexelState>((set, get) => ({
 
     // Verify active session to avoid UUID format or RLS issues when using bypass/guest profiles
     const { data: sessionData } = await supabase.auth.getSession();
-    const hasActiveSession = !!sessionData?.session;
 
-    if (supabaseConnected && user && hasActiveSession) {
+    if (supabaseConnected && user) {
       try {
-        const authUserId = sessionData.session.user.id;
+        const authUserId = sessionData?.session?.user?.id || user.id;
 
         // Ensure profile exists in public.profiles before inserting to avoid foreign key violation
         try {
@@ -497,9 +512,9 @@ export const useTexelStore = create<TexelState>((set, get) => ({
           if (!profileCheck) {
             await supabase.from('profiles').insert({
               id: authUserId,
-              email: sessionData.session.user.email || `guest_${authUserId}@texel.ai`,
+              email: sessionData?.session?.user?.email || user.email || `guest_${authUserId}@texel.ai`,
               has_accepted_tc: true,
-              name: user.name || sessionData.session.user.user_metadata?.name || sessionData.session.user.email?.split('@')[0] || 'Guest Operator',
+              name: user.name || sessionData?.session?.user?.user_metadata?.name || sessionData?.session?.user?.email?.split('@')[0] || 'Guest Operator',
               bio: '',
               organization: '',
               region: user.region || ''

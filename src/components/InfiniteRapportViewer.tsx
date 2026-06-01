@@ -33,7 +33,6 @@ export default function InfiniteRapportViewer({ imageUrl, title }: InfiniteRappo
   useEffect(() => {
     setLoading(true);
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.src = imageUrl;
     img.onload = () => {
       setImage(img);
