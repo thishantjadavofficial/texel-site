@@ -45,6 +45,7 @@ interface TexelState {
   signUpWithEmail: (params: { email: string; password?: string; name: string; region: string }) => Promise<{ error: any | null; data: any | null }>;
   signInWithOtp: (email: string) => Promise<{ error: any | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: any | null; session: any | null }>;
+  connectAsGuest: () => Promise<void>;
   
   // Local Actions & Sync
   setUser: (user: UserProfile | null) => void;
@@ -160,12 +161,40 @@ export const useTexelStore = create<TexelState>((set, get) => ({
         if (session?.user) {
           const userMeta = session.user.user_metadata || {};
           
-          // Fetch additional profile parameters
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+          // Fetch additional profile parameters with high resilience
+          let profile = null;
+          try {
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .maybeSingle();
+            
+            if (data) {
+              profile = data;
+            } else {
+              // Automatically ensure profile row exists to prevent foreign key errors
+              const { data: newProfile, error: insertError } = await supabase
+                .from('profiles')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email || `guest_${session.user.id}@texel.ai`,
+                  has_accepted_tc: false,
+                  name: userMeta.name || session.user.email?.split('@')[0] || 'Guest Operator',
+                  bio: '',
+                  organization: '',
+                  region: userMeta.region || ''
+                })
+                .select()
+                .single();
+              
+              if (!insertError && newProfile) {
+                profile = newProfile;
+              }
+            }
+          } catch (profileErr) {
+            console.error('Resilient profile fetch/insert error:', profileErr);
+          }
 
           const region = profile?.region || userMeta.region || '';
           const userCurrency = (typeof window !== 'undefined' ? localStorage.getItem('texel_currency') : null) || getCurrencyByRegion(region);
@@ -173,12 +202,12 @@ export const useTexelStore = create<TexelState>((set, get) => ({
           set({
             user: {
               id: session.user.id,
-              email: session.user.email || '',
+              email: session.user.email || profile?.email || `guest_${session.user.id}@texel.ai`,
               hasAcceptedTc: profile?.has_accepted_tc || false,
               createdAt: session.user.created_at,
-              name: profile?.name || userMeta.name || session.user.email?.split('@')[0],
-              bio: profile?.bio || userMeta.bio || '',
-              organization: profile?.organization || userMeta.organization || '',
+              name: profile?.name || userMeta.name || session.user.email?.split('@')[0] || 'Guest Operator',
+              bio: profile?.bio || '',
+              organization: profile?.organization || '',
               region: region,
               millTier: 'Elite Weaver',
               apiKeySnippet: 'sb_pub...xwrl',
@@ -322,6 +351,64 @@ export const useTexelStore = create<TexelState>((set, get) => ({
     }
   },
 
+  // Connect as a real guest user using standard dedicated guest credentials
+  connectAsGuest: async () => {
+    set({ loading: true, errorMessage: null });
+    try {
+      const email = 'guest.operator@texel.ai';
+      const password = 'TexelSecretPass123!';
+      
+      // Try to sign in
+      let { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      // If user does not exist, sign up first
+      if (error && error.message.includes('Invalid login credentials')) {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: 'Guest Operator',
+              region: 'Mumbai, India'
+            }
+          }
+        });
+        if (signUpError) throw signUpError;
+        
+        // Try to sign in again after sign up
+        const signInRes = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        if (signInRes.error) throw signInRes.error;
+        data = signInRes.data;
+      } else if (error) {
+        throw error;
+      }
+    } catch (err: any) {
+      console.warn('Real Supabase Auth guest connection failed, falling back to local sandbox:', err.message);
+      // Fallback to local sandbox user if Supabase is offline
+      const fallbackUser = {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'sandbox.operator@texel.ai',
+        hasAcceptedTc: false,
+        createdAt: new Date().toISOString(),
+        name: 'Guest Operator',
+        bio: 'Reviewing digital textile patterns and PEAL security safeguards.',
+        organization: 'Texel Labs',
+        region: 'Mumbai, India',
+        millTier: 'Elite Weaver' as const,
+        apiKeySnippet: 'sb_pub...aYg_r'
+      };
+      set({ user: fallbackUser });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
   setUser: (user) => set({ user }),
 
   acceptTc: async () => {
@@ -398,6 +485,29 @@ export const useTexelStore = create<TexelState>((set, get) => ({
     if (supabaseConnected && user && hasActiveSession) {
       try {
         const authUserId = sessionData.session.user.id;
+
+        // Ensure profile exists in public.profiles before inserting to avoid foreign key violation
+        try {
+          const { data: profileCheck } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', authUserId)
+            .maybeSingle();
+          
+          if (!profileCheck) {
+            await supabase.from('profiles').insert({
+              id: authUserId,
+              email: sessionData.session.user.email || `guest_${authUserId}@texel.ai`,
+              has_accepted_tc: true,
+              name: user.name || sessionData.session.user.user_metadata?.name || sessionData.session.user.email?.split('@')[0] || 'Guest Operator',
+              bio: '',
+              organization: '',
+              region: user.region || ''
+            });
+          }
+        } catch (profileErr) {
+          console.error('Failed to ensure profile in addDesign:', profileErr);
+        }
 
         // Step 1: Upload original master file to Supabase Storage
         if (file) {

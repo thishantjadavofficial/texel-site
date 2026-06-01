@@ -45,7 +45,7 @@ create policy "Allow owners to manage their own designs files"
 -- Profiles Table: Mutual for all platform members, role column removed.
 create table public.profiles (
   id uuid references auth.users on delete cascade primary key,
-  email text not null unique,
+  email text unique,
   has_accepted_tc boolean not null default false,
   name text,
   bio text,
@@ -151,13 +151,14 @@ begin
   insert into public.profiles (id, email, has_accepted_tc, name, bio, organization, region)
   values (
     new.id, 
-    new.email, 
+    coalesce(new.email, 'guest_' || new.id || '@texel.ai'), 
     false, 
-    coalesce(new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)), 
+    coalesce(new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1), 'Guest Operator'), 
     '', 
     '', 
     ''
-  );
+  )
+  on conflict (id) do nothing;
   return new;
 end;
 $$ language plpgsql security definer;

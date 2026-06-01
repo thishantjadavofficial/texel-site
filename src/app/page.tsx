@@ -124,6 +124,7 @@ export default function TexelMVPApp() {
     signUpWithEmail,
     signInWithOtp,
     verifyOtp,
+    connectAsGuest,
     updateProfileDetails,
     currency: activeCurrency,
     exchangeRates,
@@ -781,20 +782,8 @@ export default function TexelMVPApp() {
 
           <button
             type="button"
-            onClick={() => {
-              const newUser = {
-                id: '00000000-0000-0000-0000-000000000001',
-                email: 'sandbox.operator@texel.ai',
-                hasAcceptedTc: false,
-                createdAt: new Date().toISOString(),
-                name: 'Guest Operator',
-                bio: 'Reviewing digital textile patterns and PEAL security safeguards.',
-                organization: 'Texel Labs',
-                region: 'Mumbai, India',
-                millTier: 'Elite Weaver' as const,
-                apiKeySnippet: 'sb_pub...aYg_r'
-              };
-              useTexelStore.setState({ user: newUser });
+            onClick={async () => {
+              await connectAsGuest();
               confetti({
                 particleCount: 55,
                 spread: 75,
