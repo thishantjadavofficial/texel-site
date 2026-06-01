@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<supabase-schema project="Texel" projectId="bupqgbgzagwmxnvgcwrl">
+    <!-- Extensions -->
+    <extensions>
+        <extension name="uuid-ossp" schema="extensions" comment="Enable UUID generation algorithms"/>
+    </extensions>
+
+    <!-- Table 1: PROFILES -->
+    <table name="profiles" schema="public" description="Extends Supabase auth.users with marketplace metadata">
+        <column name="id" type="uuid" primaryKey="true" nullable="false">
+            <reference table="users" schema="auth" column="id" onDelete="CASCADE"/>
+            <description>Referential link matching the Supabase internal authentication ID</description>
+        </column>
+        <column name="email" type="text" nullable="false" unique="true">
+            <description>Verified user email address matching the login register flow</description>
+        </column>
+        <column name="role" type="text" nullable="false" default="'buyer'">
+            <check constraint="role_check">role IN ('designer', 'buyer', 'explorer')</check>
+            <description>Marketplace access level scoping: designer (Originator), buyer (Mill Master), or explorer (Sandbox)</description>
+        </column>
+        <column name="has_accepted_tc" type="boolean" nullable="false" default="false">
+            <description>Verification signoff indicating user accepted the PEAL copyright broker rules</description>
+        </column>
+        <column name="name" type="text" nullable="true">
+            <description>Full name or display name of the user</description>
+        </column>
+        <column name="bio" type="text" nullable="true">
+            <description>Short biography or statement from the user</description>
+        </column>
+        <column name="organization" type="text" nullable="true">
+            <description>Associated studio, weaving mill, or enterprise brand name</description>
+        </column>
+        <column name="region" type="text" nullable="true">
+            <description>Geographic or physical operational region of the brand/designer</description>
+        </column>
+        <column name="created_at" type="timestamp with time zone" nullable="false" default="timezone('utc'::text, now())">
+            <description>System record timestamps in UTC time</description>
+        </column>
+        
+        <security rls="true">
+            <policy name="Allow public read access to profiles" action="SELECT" roles="public">
+                <using>true</using>
+            </policy>
+            <policy name="Allow users to insert their own profile" action="INSERT" roles="authenticated">
+                <using>auth.uid() = id</using>
+            </policy>
+            <policy name="Allow users to update their own profile" action="UPDATE" roles="authenticated">
+                <using>auth.uid() = id</using>
+            </policy>
+        </security>
+    </table>
+
+    <!-- Table 2: DESIGNS -->
+    <table name="designs" schema="public" description="Textile patterns catalog index, featuring protected preview resources">
+        <column name="id" type="uuid" primaryKey="true" default="gen_random_uuid()" nullable="false"/>
+        <column name="designer_id" type="uuid" nullable="false">
+            <reference table="profiles" schema="public" column="id" onDelete="CASCADE"/>
+            <description>Unique ID of the designer who owns the intellectual property</description>
+        </column>
+        <column name="title" type="text" nullable="false">
+            <description>Name of the repeating tile artwork</description>
+        </column>
+        <column name="tags" type="text[]" nullable="false" default="'{}'">
+            <description>Array of classification tags like Silk, Linen, Cyberpunk for search index matching</description>
+        </column>
+        <column name="preview_url" type="text" nullable="false">
+            <description>URL to low-resolution preview image with right-edge pixel guard lock</description>
+        </column>
+        <column name="master_url" type="text" nullable="false">
+            <description>URL to layered high-resolution PSD or TIFF archive encrypted and held in escrow</description>
+        </column>
+        <column name="base_price" type="numeric(10,2)" nullable="false">
+            <check constraint="price_non_negative">base_price &gt;= 0</check>
+            <description>Floor USD price required by the designer to release the escrow print package</description>
+        </column>
+        <column name="max_discount_pct" type="numeric(5,2)" nullable="false">
+            <check constraint="discount_range">max_discount_pct &gt;= 0 AND max_discount_pct &lt;= 100</check>
+            <description>The maximum proportional discount percentage the designer's royalties will accept</description>
+        </column>
+        <column name="is_active" type="boolean" nullable="false" default="true">
+            <description>Status indicator allowing designers to temporarily archive catalog displays</description>
+        </column>
+        <column name="created_at" type="timestamp with time zone" nullable="false" default="timezone('utc'::text, now())"/>
+
+        <indexes>
+            <index name="idx_designs_designer_id" columns="designer_id"/>
+        </indexes>
+
+        <security rls="true">
+            <policy name="Allow public read access to active designs" action="SELECT" roles="public">
+                <using>is_active = true</using>
+            </policy>
+            <policy name="Allow designers to insert their own designs" action="INSERT" roles="authenticated">
+                <using>auth.uid() = designer_id AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'designer')</using>
+            </policy>
+            <policy name="Allow designers to update their own designs" action="UPDATE" roles="authenticated">
+                <using>auth.uid() = designer_id</using>
+            </policy>
+            <policy name="Allow designers to delete their own designs" action="DELETE" roles="authenticated">
+                <using>auth.uid() = designer_id</using>
+            </policy>
+        </security>
+    </table>
+
+    <!-- Table 3: VAULT ITEMS -->
+    <table name="vault_items" schema="public" description="Temporary staging table representing shopping carts staged for contract volume calculation">
+        <column name="id" type="uuid" primaryKey="true" default="gen_random_uuid()" nullable="false"/>
+        <column name="buyer_id" type="uuid" nullable="false">
+            <reference table="profiles" schema="public" column="id" onDelete="CASCADE"/>
+        </column>
+        <column name="design_id" type="uuid" nullable="false">
+            <reference table="designs" schema="public" column="id" onDelete="CASCADE"/>
+        </column>
+        <column name="added_at" type="timestamp with time zone" nullable="false" default="timezone('utc'::text, now())"/>
+
+        <constraints>
+            <unique name="unique_buyer_design" columns="buyer_id, design_id"/>
+        </constraints>
+
+        <indexes>
+            <index name="idx_vault_items_buyer_id" columns="buyer_id"/>
+        </indexes>
+
+        <security rls="true">
+            <policy name="Allow buyers to manage their own vault" action="ALL" roles="authenticated">
+                <using>auth.uid() = buyer_id</using>
+            </policy>
+        </security>
+    </table>
+
+    <!-- Table 4: TRANSACTIONS -->
+    <table name="transactions" schema="public" description="Compiled contracts representing cleared purchases and volume agreements">
+        <column name="id" type="uuid" primaryKey="true" default="gen_random_uuid()" nullable="false"/>
+        <column name="buyer_id" type="uuid" nullable="false">
+            <reference table="profiles" schema="public" column="id" onDelete="CASCADE"/>
+        </column>
+        <column name="total_paid" type="numeric(10,2)" nullable="false">
+            <check constraint="total_non_negative">total_paid &gt;= 0</check>
+        </column>
+        <column name="created_at" type="timestamp with time zone" nullable="false" default="timezone('utc'::text, now())"/>
+
+        <indexes>
+            <index name="idx_transactions_buyer_id" columns="buyer_id"/>
+        </indexes>
+
+        <security rls="true">
+            <policy name="Allow buyers to view their own transactions" action="SELECT" roles="authenticated">
+                <using>auth.uid() = buyer_id</using>
+            </policy>
+            <policy name="Allow buyers to create transactions" action="INSERT" roles="authenticated">
+                <using>auth.uid() = buyer_id</using>
+            </policy>
+        </security>
+    </table>
+
+    <!-- Table 5: TRANSACTION ITEMS -->
+    <table name="transaction_items" schema="public" description="Individual purchases cataloged inside cleared contracts">
+        <column name="id" type="uuid" primaryKey="true" default="gen_random_uuid()" nullable="false"/>
+        <column name="transaction_id" type="uuid" nullable="false">
+            <reference table="transactions" schema="public" column="id" onDelete="CASCADE"/>
+        </column>
+        <column name="design_id" type="uuid" nullable="false">
+            <reference table="designs" schema="public" column="id" onDelete="CASCADE"/>
+        </column>
+        <column name="original_price" type="numeric(10,2)" nullable="false">
+            <check constraint="price_non_negative">original_price &gt;= 0</check>
+        </column>
+        <column name="final_discounted_price" type="numeric(10,2)" nullable="false">
+            <check constraint="final_price_non_negative">final_discounted_price &gt;= 0</check>
+        </column>
+
+        <indexes>
+            <index name="idx_transaction_items_tx_id" columns="transaction_id"/>
+        </indexes>
+
+        <security rls="true">
+            <policy name="Allow buyers to view their own transaction items" action="SELECT" roles="authenticated">
+                <using>EXISTS (SELECT 1 FROM public.transactions WHERE id = transaction_items.transaction_id AND buyer_id = auth.uid())</using>
+            </policy>
+            <policy name="Allow buyers to insert transaction items" action="INSERT" roles="authenticated">
+                <using>EXISTS (SELECT 1 FROM public.transactions WHERE id = transaction_items.transaction_id AND buyer_id = auth.uid())</using>
+            </policy>
+        </security>
+    </table>
+
+    <!-- Triggers and Automated Functions -->
+    <triggers>
+        <trigger name="on_auth_user_created" event="AFTER INSERT" table="users" schema="auth" execution="FOR EACH ROW">
+            <function name="handle_new_user" schema="public" returnType="trigger" security="DEFINER">
+                <![CDATA[
+                BEGIN
+                    INSERT INTO public.profiles (id, email, role, has_accepted_tc, name, bio, organization, region)
+                    VALUES (
+                        NEW.id,
+                        NEW.email,
+                        COALESCE(NEW.raw_user_meta_data->>'role', 'buyer'),
+                        FALSE,
+                        COALESCE(NEW.raw_user_meta_data->>'name', NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+                        COALESCE(NEW.raw_user_meta_data->>'bio', ''),
+                        COALESCE(NEW.raw_user_meta_data->>'organization', ''),
+                        COALESCE(NEW.raw_user_meta_data->>'region', '')
+                    );
+                    RETURN NEW;
+                END;
+                ]]>
+            </function>
+        </trigger>
+    </triggers>
+</supabase-schema>

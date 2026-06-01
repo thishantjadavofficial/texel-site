@@ -1,26 +1,170 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Outfit:wght@200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Obsidian & Calibrated Slate Grays used by Linear and Vercel */
+  --background: #050507;
+  --foreground: #f4f4f5;
+  --card-bg: #09090c;
+  --card-border: rgba(255, 255, 255, 0.05);
+  
+  --font-sans: 'Outfit', sans-serif;
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --accent-color: #6366f1; /* Cyber Blue */
+  --accent-glow: rgba(99, 102, 241, 0.15);
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Dynamic typography overrides for premium aesthetic */
+h1, h2, h3, .heading-display {
+  font-family: var(--font-display);
+}
+
+code, .font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Elegant, thin scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1c1c24;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2e2e3d;
+}
+
+/* Premium Vercel/Linear Style Cards */
+.tech-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.tech-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.03);
+}
+
+.tech-input {
+  background-color: #030304;
+  border: 1px solid #1c1c24;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tech-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+/* Text Hover Micro-Animations */
+.hover-expand-text {
+  position: relative;
+  transition: letter-spacing 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease, font-weight 0.3s ease;
+}
+
+.hover-expand-text:hover {
+  letter-spacing: 0.05em;
+  color: #ffffff;
+}
+
+/* Animated sliding borders on text hover */
+.hover-underline-grow {
+  position: relative;
+}
+
+.hover-underline-grow::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  transform: scaleX(0);
+  height: 1px;
+  bottom: -2px;
+  left: 0;
+  background-color: #ffffff;
+  transform-origin: bottom right;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hover-underline-grow:hover::after {
+  transform: scaleX(1);
+  transform-origin: bottom left;
+}
+
+/* Ambient glow particles */
+.bg-ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Floating custom fabric grids */
+.fabric-mesh-grid {
+  background-image: 
+    radial-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 0),
+    radial-gradient(rgba(255, 255, 255, 0.015) 1.5px, transparent 0);
+  background-size: 32px 32px;
+  background-position: 0 0, 16px 16px;
+  pointer-events: none;
+}
+
+/* Premium active toggle pill slider */
+.glassmorphic-pills {
+  background-color: rgba(9, 9, 12, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Dynamic Raster Guard Offset Representation (PEAL border offset) */
+.peal-guard-active {
+  position: relative;
+}
+
+.peal-guard-active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 3px;
+  background: #000000;
+  z-index: 10;
+  pointer-events: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Custom interactive CAD typography utility */
+.hud-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #71717a;
 }
