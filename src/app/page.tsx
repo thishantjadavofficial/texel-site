@@ -50,92 +50,153 @@ const convertAndCompressFile = async (
   file: File,
   title: string
 ): Promise<{ masterBlob: Blob; previewBlob: Blob; logStr: string }> => {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      reject(new Error('Canvas context failed'));
-      return;
-    }
-
-    const img = new Image();
-    
-    img.onload = async () => {
-      // 1. Initial Scale Down (Max Dimension 2048x2048)
-      const MAX_DIM = 2048; 
-      let width = img.width;
-      let height = img.height;
-      if (width > height) {
-        if (width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        }
-      } else {
-        if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
+  return new Promise(async (resolve, reject) => {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas context failed'));
+        return;
       }
-      canvas.width = width;
-      canvas.height = height;
 
-      // Fill white background in case of transparency -> JPEG conversion
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
+      const isTiff = file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff') || file.type === 'image/tiff';
+      const isPsd = file.name.toLowerCase().endsWith('.psd') || file.type === 'image/vnd.adobe.photoshop';
 
-      // Helper function to get Blob from canvas
-      const getCanvasBlob = (format: string, quality?: number): Promise<Blob> => {
-        return new Promise((res, rej) => {
-          canvas.toBlob((blob) => {
-            if (blob) res(blob);
-            else rej(new Error('Blob export failed'));
-          }, format, quality);
-        });
+      let imgWidth = 0;
+      let imgHeight = 0;
+
+      // Helper to scale down to 2048x2048 to keep things fast
+      const scaleCanvasDown = (c: HTMLCanvasElement, cx: CanvasRenderingContext2D, w: number, h: number) => {
+        const MAX_DIM = 2048; 
+        if (w <= MAX_DIM && h <= MAX_DIM) return;
+        
+        let newW = w;
+        let newH = h;
+        if (w > h) {
+          newH = Math.round((h * MAX_DIM) / w);
+          newW = MAX_DIM;
+        } else {
+          newW = Math.round((w * MAX_DIM) / h);
+          newH = MAX_DIM;
+        }
+        
+        const off = document.createElement('canvas');
+        off.width = w;
+        off.height = h;
+        off.getContext('2d')?.drawImage(c, 0, 0);
+        
+        c.width = newW;
+        c.height = newH;
+        cx.fillStyle = '#FFFFFF';
+        cx.fillRect(0, 0, newW, newH);
+        cx.drawImage(off, 0, 0, newW, newH);
       };
 
-      try {
-        // 2. Export both formats to find the smallest one!
-        // JPEG at 0.85 quality is usually great, PNG is lossless
-        const [jpegBlob, pngBlob, previewBlob] = await Promise.all([
-          getCanvasBlob('image/jpeg', 0.85),
-          getCanvasBlob('image/png'),
-          getCanvasBlob('image/jpeg', 0.75) // Standard compressed preview
-        ]);
+      const finishExport = async () => {
+        const getCanvasBlob = (format: string, quality?: number): Promise<Blob> => {
+          return new Promise((res, rej) => {
+            canvas.toBlob((blob) => {
+              if (blob) res(blob);
+              else rej(new Error('Blob export failed'));
+            }, format, quality);
+          });
+        };
 
-        let masterBlob = jpegBlob;
-        let selectedFormat = 'JPEG';
+        try {
+          const [jpegBlob, pngBlob, previewBlob] = await Promise.all([
+            getCanvasBlob('image/jpeg', 0.85),
+            getCanvasBlob('image/png'),
+            getCanvasBlob('image/jpeg', 0.75) 
+          ]);
 
-        if (pngBlob.size < jpegBlob.size) {
-          masterBlob = pngBlob;
-          selectedFormat = 'PNG';
+          let masterBlob = jpegBlob;
+          let selectedFormat = 'JPEG';
+
+          if (pngBlob.size < jpegBlob.size) {
+            masterBlob = pngBlob;
+            selectedFormat = 'PNG';
+          }
+
+          const FOUR_MB = 4 * 1024 * 1024;
+          if (masterBlob.size > FOUR_MB) {
+            masterBlob = await getCanvasBlob('image/jpeg', 0.6);
+            selectedFormat = 'JPEG (Aggressive)';
+          }
+
+          const reduction = ((1 - masterBlob.size / file.size) * 100).toFixed(0);
+          
+          resolve({
+            masterBlob,
+            previewBlob,
+            logStr: `Optimized Master -> ${selectedFormat}: ${formatFileSize(file.size)} -> ${formatFileSize(masterBlob.size)} (${reduction}% reduction)`
+          });
+        } catch (err) {
+          reject(err);
         }
+      };
 
-        // 3. Ensure it strictly falls under Vercel's 4MB limit!
-        const FOUR_MB = 4 * 1024 * 1024;
-        if (masterBlob.size > FOUR_MB) {
-          // If STILL over 4MB, force aggressive JPEG compression
-          masterBlob = await getCanvasBlob('image/jpeg', 0.6);
-          selectedFormat = 'JPEG (Aggressive)';
-        }
-
-        const reduction = ((1 - masterBlob.size / file.size) * 100).toFixed(0);
+      if (isTiff) {
+        // @ts-ignore
+        const UTIF = (await import('utif')).default || (await import('utif'));
+        const buffer = await file.arrayBuffer();
+        const ifds = UTIF.decode(buffer);
+        UTIF.decodeImage(buffer, ifds[0]);
+        const rgba = UTIF.toRGBA8(ifds[0]);
+        imgWidth = ifds[0].width;
+        imgHeight = ifds[0].height;
         
-        resolve({
-          masterBlob,
-          previewBlob,
-          logStr: `Optimized Master -> ${selectedFormat}: ${formatFileSize(file.size)} -> ${formatFileSize(masterBlob.size)} (${reduction}% reduction)`
-        });
-      } catch (err) {
-        reject(err);
+        canvas.width = imgWidth;
+        canvas.height = imgHeight;
+        const imageData = new ImageData(new Uint8ClampedArray(rgba), imgWidth, imgHeight);
+        ctx.putImageData(imageData, 0, 0);
+        
+        scaleCanvasDown(canvas, ctx, imgWidth, imgHeight);
+        await finishExport();
+
+      } else if (isPsd) {
+        // @ts-ignore
+        const { readPsd } = await import('ag-psd');
+        const buffer = await file.arrayBuffer();
+        const psd = readPsd(buffer);
+        
+        if (!psd.canvas) {
+          throw new Error("PSD file did not contain a readable composite image canvas.");
+        }
+        
+        imgWidth = psd.width;
+        imgHeight = psd.height;
+        canvas.width = imgWidth;
+        canvas.height = imgHeight;
+        ctx.drawImage(psd.canvas, 0, 0);
+        
+        scaleCanvasDown(canvas, ctx, imgWidth, imgHeight);
+        await finishExport();
+
+      } else {
+        const img = new Image();
+        img.onload = () => {
+          imgWidth = img.width;
+          imgHeight = img.height;
+          canvas.width = imgWidth;
+          canvas.height = imgHeight;
+          
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, imgWidth, imgHeight);
+          ctx.drawImage(img, 0, 0);
+          
+          scaleCanvasDown(canvas, ctx, imgWidth, imgHeight);
+          finishExport();
+        };
+
+        img.onerror = () => {
+          reject(new Error(`Browser cannot natively decode this file format (${file.type || file.name}).`));
+        };
+
+        img.src = URL.createObjectURL(file);
       }
-    };
-
-    img.onerror = () => {
-      reject(new Error(`Browser cannot natively decode this heavy file format (${file.type || file.name}). Try converting to a standard format (JPG/PNG) first.`));
-    };
-
-    img.src = URL.createObjectURL(file);
+    } catch (err) {
+      reject(err);
+    }
   });
 };
 
@@ -415,10 +476,12 @@ export default function TexelMVPApp() {
         setUploadLogs(prev => [...prev, '[Security Scan] Ready. Protection active. HD JPEG/PNG converted & prepared.']);
       }, 500);
 
-    } catch (error) {
+    } catch (error: any) {
       clearInterval(interval);
       console.error('File compression failed:', error);
+      alert('Error parsing file: ' + (error.message || 'Corrupted or unsupported format.'));
       setUploadState('idle');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setUploadLogs(prev => [...prev, '[Error] Compression pipeline failed.']);
     }
   };
