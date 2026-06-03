@@ -35,6 +35,7 @@ import {
 import { useTexelStore } from '@/store/texelStore';
 import { calculateBulkPricing, getPlatformDiscountPercentage, convertUSDToINR, PricingEngineResult, CURRENCY_DETAILS, convertUSD, formatCurrencyValue } from '@/utils/pricingEngine';
 import InfiniteRapportViewer from '@/components/InfiniteRapportViewer';
+import { supabase } from '@/utils/supabaseClient';
 
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes';
@@ -621,27 +622,49 @@ export default function TexelMVPApp() {
     setAuthError(null);
 
     try {
+      // Check if email exists in database
+      const { data: existingUser, error: checkError } = await supabase
+        .from('profiles')
+        .select('email')
+        .ilike('email', authEmail)
+        .maybeSingle();
+
+      const isRegistered = !!existingUser;
+
       if (authTab === 'register') {
-        // Registering a new account
-        const { error, data } = await signUpWithEmail({
+        if (isRegistered) {
+          throw new Error('This email is already registered, please login.');
+        }
+
+        // Send OTP and create user only on verification
+        const { error } = await supabase.auth.signInWithOtp({
           email: authEmail,
-          password: authPassword || undefined,
-          name: authName || authEmail.split('@')[0],
-          region: authRegion
+          options: {
+            shouldCreateUser: true,
+            data: {
+              name: authName || authEmail.split('@')[0],
+              region: authRegion
+            }
+          }
         });
 
         if (error) throw error;
-        
-        // Supabase SignUp complete. Now trigger OTP
-        const { error: otpErr } = await signInWithOtp(authEmail);
-        if (otpErr) throw otpErr;
-
         setOtpSent(true);
-      } else {
-        // Logging in - trigger OTP immediately
-        const { error } = await signInWithOtp(authEmail);
-        if (error) throw error;
 
+      } else {
+        // Logging in
+        if (!isRegistered) {
+          throw new Error('This email is not registered, signup instead.');
+        }
+
+        const { error } = await supabase.auth.signInWithOtp({
+          email: authEmail,
+          options: {
+            shouldCreateUser: false
+          }
+        });
+
+        if (error) throw error;
         setOtpSent(true);
       }
     } catch (err: any) {
