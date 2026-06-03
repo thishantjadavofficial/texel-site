@@ -50,102 +50,19 @@ const convertAndCompressFile = async (
   file: File,
   title: string
 ): Promise<{ masterBlob: Blob; previewBlob: Blob; logStr: string }> => {
-  return new Promise((resolve) => {
-    const isPNG = file.type === 'image/png' || file.name.endsWith('.png');
-    const isWebReadable = file.type.startsWith('image/') && !file.name.endsWith('.tif') && !file.name.endsWith('.tiff') && !file.name.endsWith('.psd');
-
+  return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      resolve({ masterBlob: file, previewBlob: file, logStr: 'Canvas context failed' });
+      reject(new Error('Canvas context failed'));
       return;
     }
 
-    // Function to generate a stunning synthetic high-definition textile pattern
-    // if the file is a PSD or TIFF or unreadable format.
-    const generateSyntheticTextile = () => {
-      // 2048x2048 is a gorgeous high-definition standard for textile designs
-      canvas.width = 2048;
-      canvas.height = 2048;
-
-      // Draw a stunning procedurally generated rich textile design!
-      const gradient = ctx.createRadialGradient(1024, 1024, 100, 1024, 1024, 1200);
-      gradient.addColorStop(0, '#1e1b4b'); // Deep indigo
-      gradient.addColorStop(0.5, '#3b0764'); // Rich purple
-      gradient.addColorStop(1, '#09090b'); // Dark onyx
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 2048, 2048);
-
-      // Procedural textile weaves / lattices
-      ctx.strokeStyle = 'rgba(168, 85, 247, 0.15)'; // electric purple lines
-      ctx.lineWidth = 2;
-      const step = 64;
-      for (let i = 0; i <= 2048; i += step) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i, 2048);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(0, i);
-        ctx.lineTo(2048, i);
-        ctx.stroke();
-      }
-
-      // Render ornate repeating mandalas/motifs (Kashmir/Deccan Paisley style)
-      ctx.fillStyle = 'rgba(236, 72, 153, 0.08)'; // pink glow
-      for (let x = 256; x < 2048; x += 512) {
-        for (let y = 256; y < 2048; y += 512) {
-          ctx.beginPath();
-          ctx.arc(x, y, 120, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Ornate star/floral lattices
-          ctx.strokeStyle = 'rgba(253, 224, 71, 0.4)'; // Gold lines
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 6) {
-            ctx.moveTo(x, y);
-            const rx = x + Math.cos(angle) * 160;
-            const ry = y + Math.sin(angle) * 160;
-            ctx.lineTo(rx, ry);
-          }
-          ctx.stroke();
-        }
-      }
-
-      // Add elegant watermark text
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-      ctx.font = 'bold 36px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(`TEXEL ESCROW PROTECTION SYSTEM - ${title.toUpperCase()}`, 1024, 1024);
-
-      // Export as high-definition JPEG blob
-      canvas.toBlob((masterBlob) => {
-        canvas.toBlob((previewBlob) => {
-          if (masterBlob && previewBlob) {
-            resolve({
-              masterBlob,
-              previewBlob,
-              logStr: `Procedural HD Textile generated for non-web format (${file.name.split('.').pop()?.toUpperCase() || 'Unknown'}): 2048x2048 px JPEG (~${(masterBlob.size / 1024 / 1024).toFixed(2)} MB)`
-            });
-          } else {
-            resolve({ masterBlob: file, previewBlob: file, logStr: 'HD generation export failed' });
-          }
-        }, 'image/jpeg', 0.75); // compressed preview
-      }, 'image/jpeg', 0.85); // high definition master
-    };
-
-    if (!isWebReadable) {
-      generateSyntheticTextile();
-      return;
-    }
-
-    // Web readable files: read natively and compress to high definition JPEG/PNG under 4MB
     const img = new Image();
-    img.onload = () => {
-      // Scale down only if image is excessively large to keep size under 4MB
-      const MAX_DIM = 2048; // Excellent high-definition width/height
+    
+    img.onload = async () => {
+      // 1. Initial Scale Down (Max Dimension 2048x2048)
+      const MAX_DIM = 2048; 
       let width = img.width;
       let height = img.height;
       if (width > height) {
@@ -162,31 +79,60 @@ const convertAndCompressFile = async (
       canvas.width = width;
       canvas.height = height;
 
+      // Fill white background in case of transparency -> JPEG conversion
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Export master as JPEG (or PNG if original is PNG) under 4MB
-      const format = isPNG ? 'image/png' : 'image/jpeg';
-      const quality = isPNG ? undefined : 0.85; // 0.85 quality is stunning HD but very small size
+      // Helper function to get Blob from canvas
+      const getCanvasBlob = (format: string, quality?: number): Promise<Blob> => {
+        return new Promise((res, rej) => {
+          canvas.toBlob((blob) => {
+            if (blob) res(blob);
+            else rej(new Error('Blob export failed'));
+          }, format, quality);
+        });
+      };
 
-      canvas.toBlob((masterBlob) => {
-        // Export preview as compressed JPEG
-        canvas.toBlob((previewBlob) => {
-          if (masterBlob && previewBlob) {
-            const reduction = ((1 - masterBlob.size / file.size) * 100).toFixed(0);
-            resolve({
-              masterBlob,
-              previewBlob,
-              logStr: `HD ${format.split('/')[1].toUpperCase()} converted & compressed successfully: ${formatFileSize(file.size)} -> ${formatFileSize(masterBlob.size)} (${reduction}% reduction)`
-            });
-          } else {
-            resolve({ masterBlob: file, previewBlob: file, logStr: 'Compression export failed' });
-          }
-        }, 'image/jpeg', 0.75); // 0.75 preview quality
-      }, format, quality);
+      try {
+        // 2. Export both formats to find the smallest one!
+        // JPEG at 0.85 quality is usually great, PNG is lossless
+        const [jpegBlob, pngBlob, previewBlob] = await Promise.all([
+          getCanvasBlob('image/jpeg', 0.85),
+          getCanvasBlob('image/png'),
+          getCanvasBlob('image/jpeg', 0.75) // Standard compressed preview
+        ]);
+
+        let masterBlob = jpegBlob;
+        let selectedFormat = 'JPEG';
+
+        if (pngBlob.size < jpegBlob.size) {
+          masterBlob = pngBlob;
+          selectedFormat = 'PNG';
+        }
+
+        // 3. Ensure it strictly falls under Vercel's 4MB limit!
+        const FOUR_MB = 4 * 1024 * 1024;
+        if (masterBlob.size > FOUR_MB) {
+          // If STILL over 4MB, force aggressive JPEG compression
+          masterBlob = await getCanvasBlob('image/jpeg', 0.6);
+          selectedFormat = 'JPEG (Aggressive)';
+        }
+
+        const reduction = ((1 - masterBlob.size / file.size) * 100).toFixed(0);
+        
+        resolve({
+          masterBlob,
+          previewBlob,
+          logStr: `Optimized Master -> ${selectedFormat}: ${formatFileSize(file.size)} -> ${formatFileSize(masterBlob.size)} (${reduction}% reduction)`
+        });
+      } catch (err) {
+        reject(err);
+      }
     };
 
     img.onerror = () => {
-      generateSyntheticTextile();
+      reject(new Error(`Browser cannot natively decode this heavy file format (${file.type || file.name}). Try converting to a standard format (JPG/PNG) first.`));
     };
 
     img.src = URL.createObjectURL(file);
@@ -445,7 +391,7 @@ export default function TexelMVPApp() {
       // Run actual compression / conversion
       const { masterBlob, previewBlob, logStr } = await convertAndCompressFile(file, title || file.name);
       
-      const fileExt = file.name.split('.').pop() === 'png' ? 'png' : 'jpg';
+      const fileExt = masterBlob.type === 'image/png' ? 'png' : 'jpg';
       const masterName = `${file.name.split('.')[0]}_hd.${fileExt}`;
       const convertedMasterFile = new File([masterBlob], masterName, { type: masterBlob.type });
 
