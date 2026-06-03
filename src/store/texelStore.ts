@@ -540,6 +540,7 @@ export const useTexelStore = create<TexelState>((set, get) => ({
 
           if (masterUploadError) {
             console.warn('Supabase master upload error:', masterUploadError.message);
+            throw new Error(`Master file upload failed: ${masterUploadError.message}`);
           } else {
             const { data: masterUrlData } = supabase.storage
               .from('designs')
@@ -564,6 +565,7 @@ export const useTexelStore = create<TexelState>((set, get) => ({
 
           if (previewUploadError) {
             console.warn('Supabase preview upload error:', previewUploadError.message);
+            throw new Error(`Preview file upload failed: ${previewUploadError.message}`);
           } else {
             const { data: previewUrlData } = supabase.storage
               .from('designs')
@@ -607,8 +609,8 @@ export const useTexelStore = create<TexelState>((set, get) => ({
         if (error) throw error;
         await get().loadDesigns();
       } catch (err: any) {
-        console.error('Supabase design publish error:', err.message);
-        alert(`Failed to publish design to database: ${err.message}`);
+        console.error('Supabase design publish error:', err.message || err);
+        throw err;
       }
     } else {
       // Local sandbox fallback

@@ -281,8 +281,9 @@ export default function TexelMVPApp() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [previewFile, setPreviewFile] = useState<Blob | File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [uploadState, setUploadState] = useState<'idle' | 'compressing' | 'locking' | 'complete'>('idle');
+  const [uploadState, setUploadState] = useState<'idle' | 'compressing' | 'locking' | 'publishing' | 'complete'>('idle');
   const [uploadLogs, setUploadLogs] = useState<string[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Mouse hover coordinate glow states for ambient background (Slowed down significantly)
@@ -419,6 +420,7 @@ export default function TexelMVPApp() {
 
   // Pipeline simulation logs
   const processFile = async (file: File) => {
+    setUploadError(null);
     setUploadState('compressing');
     setUploadProgress(0);
     const originalSizeStr = formatFileSize(file.size);
@@ -474,8 +476,78 @@ export default function TexelMVPApp() {
     }
   };
 
-  const handlePublishDesign = (e: React.FormEvent) => {
-    e.preventDefault();
+  const executePublish = async () => {
+    if (!user || !title || !uploadFile) return;
+
+    setUploadState('publishing');
+    setUploadError(null);
+    setUploadLogs(prev => [
+      ...prev,
+      `[Publish] Initiating secure catalog publish...`,
+      `[Publish] Syncing with database and storage buckets...`
+    ]);
+
+    const parsedTags = tagsInput
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0);
+
+    if (parsedTags.length === 0) parsedTags.push('Bespoke');
+
+    try {
+      await addDesign({
+        title,
+        tags: parsedTags,
+        basePrice: parseFloat(basePrice) / (exchangeRates[activeCurrency] || 1.0),
+        maxDiscountPct: parseFloat(maxDiscount),
+        designerId: user.name || user.email.split('@')[0],
+        previewUrl: '' // Overwritten by Supabase Storage public URL
+      }, uploadFile, previewFile || undefined);
+
+      setUploadLogs(prev => [
+        ...prev,
+        `[Publish] Upload and database record completed successfully!`
+      ]);
+      setUploadState('idle');
+      
+      // Clear uploader form state on success
+      setTitle('');
+      setTagsInput('');
+      setBasePrice('120');
+      setMaxDiscount('15');
+      setUploadFile(null);
+      setPreviewFile(null);
+      setUploadProgress(0);
+      setUploadLogs([]);
+
+      // Confetti only for the first upload
+      const isFirstUpload = !localStorage.getItem('texel_first_upload_done');
+      if (isFirstUpload) {
+        localStorage.setItem('texel_first_upload_done', 'true');
+        confetti({
+          particleCount: 80,
+          spread: 60,
+          origin: { y: 0.6 },
+          colors: ['#6366f1', '#a855f7']
+        });
+      }
+
+      alert('Design published successfully.');
+    } catch (err: any) {
+      console.error('Upload execution failed:', err);
+      const errMsg = err.message || JSON.stringify(err);
+      setUploadError(errMsg);
+      setUploadState('complete'); // Keep complete state so user can fix and retry
+      setUploadLogs(prev => [
+        ...prev,
+        `[Error] Publish failed: ${errMsg}`
+      ]);
+      alert(`Failed to publish design: ${errMsg}`);
+    }
+  };
+
+  const handlePublishDesign = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!user) return;
     
     if (!user.hasAcceptedTc) {
@@ -485,45 +557,7 @@ export default function TexelMVPApp() {
 
     if (!title || !uploadFile) return;
 
-    const parsedTags = tagsInput
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag.length > 0);
-
-    if (parsedTags.length === 0) parsedTags.push('Bespoke');
-
-    addDesign({
-      title,
-      tags: parsedTags,
-      basePrice: parseFloat(basePrice) / (exchangeRates[activeCurrency] || 1.0),
-      maxDiscountPct: parseFloat(maxDiscount),
-      designerId: user.name || user.email.split('@')[0],
-      previewUrl: '' // Overwritten by Supabase Storage public URL
-    }, uploadFile || undefined, previewFile || undefined);
-
-    setTitle('');
-    setTagsInput('');
-    setBasePrice('120');
-    setMaxDiscount('15');
-    setUploadFile(null);
-    setPreviewFile(null);
-    setUploadState('idle');
-    setUploadProgress(0);
-    setUploadLogs([]);
-
-    // Confetti only for the first upload
-    const isFirstUpload = !localStorage.getItem('texel_first_upload_done');
-    if (isFirstUpload) {
-      localStorage.setItem('texel_first_upload_done', 'true');
-      confetti({
-        particleCount: 80,
-        spread: 60,
-        origin: { y: 0.6 },
-        colors: ['#6366f1', '#a855f7']
-      });
-    }
-
-    alert('Design published successfully.');
+    executePublish();
   };
 
   const handleUploadSubmitAttempt = (e: React.FormEvent) => {
@@ -536,9 +570,11 @@ export default function TexelMVPApp() {
     }
   };
 
-  const handleAcceptTc = () => {
-    acceptTc();
+  const handleAcceptTc = async () => {
+    await acceptTc();
     setShowTcModal(false);
+    // Immediately execute the publishing pipeline now that T&C is accepted
+    executePublish();
   };
 
   const runPricingEngine = () => {
@@ -1214,7 +1250,17 @@ export default function TexelMVPApp() {
                   </div>
 
                   <form onSubmit={handleUploadSubmitAttempt} className="space-y-6">
-                    {/* Rounded drag drop construct */}
+                    {uploadError && (
+                      <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl text-xs font-mono text-red-400 flex items-start gap-2.5 shadow-lg animate-pulse">
+                        <AlertCircle className="w-4.5 h-4.5 shrink-0 mt-0.5 text-red-500" />
+                        <div className="text-left space-y-1">
+                          <span className="font-bold uppercase tracking-wider block">Upload Blocked</span>
+                          <span className="leading-relaxed block">{uploadError}</span>
+                          <span className="text-[9px] text-zinc-500 block font-normal mt-1">Please check the issue above and try again.</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       {uploadState === 'idle' ? (
                         <div
@@ -1258,8 +1304,14 @@ export default function TexelMVPApp() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => { setUploadFile(null); setUploadState('idle'); }}
-                              className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-full transition-colors cursor-pointer"
+                              onClick={() => {
+                                if (uploadState === 'publishing') return;
+                                setUploadFile(null);
+                                setUploadState('idle');
+                                setUploadError(null);
+                              }}
+                              disabled={uploadState === 'publishing'}
+                              className={`p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-full transition-colors ${uploadState === 'publishing' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1299,10 +1351,11 @@ export default function TexelMVPApp() {
                         <input
                           type="text"
                           required
+                          disabled={uploadState === 'publishing'}
                           value={title}
                           onChange={(e) => setTitle(e.target.value)}
                           placeholder="e.g. Silk Repeat Pattern"
-                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold"
+                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
 
@@ -1310,10 +1363,11 @@ export default function TexelMVPApp() {
                         <label className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Tags (comma-separated)</label>
                         <input
                           type="text"
+                          disabled={uploadState === 'publishing'}
                           value={tagsInput}
                           onChange={(e) => setTagsInput(e.target.value)}
                           placeholder="e.g. Silk, Floral"
-                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold"
+                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
 
@@ -1327,10 +1381,11 @@ export default function TexelMVPApp() {
                             type="number"
                             required
                             min="0"
+                            disabled={uploadState === 'publishing'}
                             value={basePrice}
                             onChange={(e) => setBasePrice(e.target.value)}
                             placeholder="e.g. 120"
-                            className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl pl-9 pr-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold"
+                            className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl pl-9 pr-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                         </div>
                         {activeCurrency !== 'USD' && (
@@ -1347,19 +1402,21 @@ export default function TexelMVPApp() {
                           required
                           min="0"
                           max="100"
+                          disabled={uploadState === 'publishing'}
                           value={maxDiscount}
                           onChange={(e) => setMaxDiscount(e.target.value)}
                           placeholder="e.g. 15"
-                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold"
+                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
 
                       <div className="space-y-2 md:col-span-2">
                         <label className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Repeat Pattern Type</label>
                         <select
+                          disabled={uploadState === 'publishing'}
                           value={repeatType}
                           onChange={(e) => setRepeatType(e.target.value)}
-                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold cursor-pointer"
+                          className="w-full bg-zinc-950 border border-white/[0.04] rounded-xl px-4 py-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 focus:bg-black transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                           <option value="Full Repeat">Full Repeat (Square)</option>
                           <option value="Half-Drop 1/2">Half-Drop 1/2 Repeat</option>
@@ -1372,11 +1429,20 @@ export default function TexelMVPApp() {
 
                     <button
                       type="submit"
-                      disabled={uploadState !== 'complete' || !title}
+                      disabled={(uploadState !== 'complete' && uploadState !== 'publishing') || !title || uploadState === 'publishing'}
                       className="w-full py-4 rounded-full font-mono font-black text-[10px] uppercase tracking-widest bg-white hover:bg-zinc-200 disabled:bg-zinc-900 disabled:text-zinc-650 disabled:border-transparent text-black transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 shadow-[0_4px_25px_rgba(255,255,255,0.08)]"
                     >
-                      <ShieldCheck className="w-4.5 h-4.5" />
-                      <span>Publish</span>
+                      {uploadState === 'publishing' ? (
+                        <>
+                          <div className="w-3.5 h-3.5 rounded-full border border-black/20 border-t-black animate-spin"></div>
+                          <span>Publishing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4.5 h-4.5" />
+                          <span>Publish</span>
+                        </>
+                      )}
                     </button>
                   </form>
                 </div>
