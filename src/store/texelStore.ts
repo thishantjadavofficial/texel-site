@@ -588,6 +588,7 @@ export const useTexelStore = create<TexelState>((set, get) => ({
 
         // Step 3: Insert record into designs table
         const payload = {
+          id: newId,
           user_id: authUserId,
           title: designData.title,
           tags: designData.tags,

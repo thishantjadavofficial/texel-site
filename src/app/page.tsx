@@ -519,7 +519,7 @@ export default function TexelMVPApp() {
       setPreviewFile(null);
       setUploadProgress(0);
       setUploadLogs([]);
-
+      
       // Confetti only for the first upload
       const isFirstUpload = !localStorage.getItem('texel_first_upload_done');
       if (isFirstUpload) {
@@ -543,6 +543,14 @@ export default function TexelMVPApp() {
         `[Error] Publish failed: ${errMsg}`
       ]);
       alert(`Failed to publish design: ${errMsg}`);
+    } finally {
+      // Ensure UI unlocks and file input resets if they want to re-upload the same file
+      if (uploadState !== 'complete') {
+        setUploadState('idle');
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -1309,6 +1317,7 @@ export default function TexelMVPApp() {
                                 setUploadFile(null);
                                 setUploadState('idle');
                                 setUploadError(null);
+                                if (fileInputRef.current) fileInputRef.current.value = '';
                               }}
                               disabled={uploadState === 'publishing'}
                               className={`p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-full transition-colors ${uploadState === 'publishing' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
