@@ -158,6 +158,12 @@ export const useTexelStore = create<TexelState>((set, get) => ({
 
       // 2. Set Up Auth State Change Listener
       supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'INITIAL_SESSION' && session) {
+          // Do not reload saved login session per user request, force OTP login every time
+          await supabase.auth.signOut();
+          return;
+        }
+
         if (session?.user) {
           const userMeta = session.user.user_metadata || {};
           
