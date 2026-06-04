@@ -505,7 +505,7 @@ export const useTexelStore = create<TexelState>((set, get) => ({
     // Verify active session to avoid UUID format or RLS issues when using bypass/guest profiles
     const { data: sessionData } = await supabase.auth.getSession();
 
-    if (supabaseConnected && user) {
+    if (supabaseConnected && user && sessionData?.session) {
       try {
         const authUserId = sessionData?.session?.user?.id || user.id;
 
@@ -540,8 +540,7 @@ export const useTexelStore = create<TexelState>((set, get) => ({
           const { error: masterUploadError } = await supabase.storage
             .from('designs')
             .upload(masterPath, file, {
-              cacheControl: '3600',
-              upsert: true
+              cacheControl: '3600'
             });
 
           if (masterUploadError) {
@@ -565,7 +564,6 @@ export const useTexelStore = create<TexelState>((set, get) => ({
             .from('designs')
             .upload(previewPath, previewFile, {
               cacheControl: '3600',
-              upsert: true,
               contentType: 'image/jpeg'
             });
 
