@@ -44,7 +44,7 @@ interface TexelState {
   signInWithGoogle: () => Promise<{ error: any | null }>;
   signUpWithEmail: (params: { email: string; password?: string; name: string; region: string }) => Promise<{ error: any | null; data: any | null }>;
   signInWithOtp: (email: string) => Promise<{ error: any | null }>;
-  verifyOtp: (email: string, token: string) => Promise<{ error: any | null; session: any | null }>;
+  verifyOtp: (email: string, token: string, type?: any) => Promise<{ error: any | null; session: any | null }>;
   connectAsGuest: () => Promise<void>;
   
   // Local Actions & Sync
@@ -159,8 +159,7 @@ export const useTexelStore = create<TexelState>((set, get) => ({
       // 2. Set Up Auth State Change Listener
       supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'INITIAL_SESSION' && session) {
-          // Do not reload saved login session per user request, force OTP login every time
-          await supabase.auth.signOut();
+          // Keep existing session intact!
           return;
         }
 
@@ -343,12 +342,12 @@ export const useTexelStore = create<TexelState>((set, get) => ({
   },
 
   // Verify Supabase Email Confirmation OTP Token
-  verifyOtp: async (email, token) => {
+  verifyOtp: async (email, token, type: any = 'email') => {
     try {
       const { data, error } = await supabase.auth.verifyOtp({
         email,
         token,
-        type: 'email'
+        type
       });
       return { error, session: data.session };
     } catch (err: any) {

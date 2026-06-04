@@ -652,21 +652,8 @@ export default function TexelMVPApp() {
     setAuthError(null);
 
     try {
-      // Check if email exists in database
-      const { data: existingUser, error: checkError } = await supabase
-        .from('profiles')
-        .select('email')
-        .ilike('email', authEmail)
-        .maybeSingle();
-
-      const isRegistered = !!existingUser;
-
       if (authTab === 'register') {
-        if (isRegistered) {
-          throw new Error('This email is already registered, please login.');
-        }
-
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: authEmail,
           password: authPassword,
           options: {
@@ -680,18 +667,15 @@ export default function TexelMVPApp() {
 
         if (error) throw error;
         
-        // Immediately sign in to bypass email confirmation if possible
-        await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password: authPassword
-        });
+        // If no session is returned, it means email confirmation (OTP) is required
+        if (!data?.session) {
+          setOtpSent(true);
+          return;
+        }
+
 
       } else {
         // Logging in
-        if (!isRegistered) {
-          throw new Error('This email is not registered, signup instead.');
-        }
-
         const { error } = await supabase.auth.signInWithPassword({
           email: authEmail,
           password: authPassword
@@ -701,7 +685,27 @@ export default function TexelMVPApp() {
       }
     } catch (err: any) {
       console.error('Authentication error:', err.message);
-      setAuthError(err.message || 'Authentication failed. Please check your credentials.');
+      if (err.message.includes('Invalid login credentials')) {
+        setAuthError('Invalid credentials. If you signed up via OTP before and have no password, please click "Use OTP" below.');
+      } else {
+        setAuthError(err.message || 'Authentication failed. Please check your credentials.');
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // OTP Fallback for Login
+  const handleSendOtpFallback = async () => {
+    if (!authEmail) return;
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email: authEmail });
+      if (error) throw error;
+      setOtpSent(true);
+    } catch (err: any) {
+      setAuthError(err.message || 'Failed to send OTP.');
     } finally {
       setAuthLoading(false);
     }
@@ -716,7 +720,8 @@ export default function TexelMVPApp() {
     setAuthError(null);
 
     try {
-      const { error, session } = await verifyOtp(authEmail, otpCode);
+      const type = authTab === 'register' ? 'signup' : 'email';
+      const { error, session } = await verifyOtp(authEmail, otpCode, type);
       if (error) throw error;
 
       confetti({
@@ -891,13 +896,32 @@ export default function TexelMVPApp() {
 
 
 
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-zinc-900 border border-white/[0.05] hover:bg-zinc-800 text-white disabled:bg-zinc-900 disabled:text-zinc-650 transition-all cursor-pointer shadow-lg mt-3"
-                >
-                  {authLoading ? 'Authorizing...' : authTab === 'register' ? 'Get OTP' : 'Login'}
-                </button>
+                <div className="flex flex-col gap-2 mt-3">
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="flex-1 py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-zinc-900 border border-white/[0.05] hover:bg-zinc-800 text-white disabled:bg-zinc-900 disabled:text-zinc-650 transition-all cursor-pointer shadow-lg"
+                    >
+                      {authLoading ? 'Authorizing...' : authTab === 'register' ? 'Register' : 'Login'}
+                    </button>
+                    {authTab === 'signin' && (
+                      <button
+                        type="button"
+                        onClick={handleSendOtpFallback}
+                        disabled={authLoading}
+                        className="flex-1 py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-white border border-white/[0.05] hover:bg-zinc-200 text-black disabled:bg-zinc-300 disabled:text-zinc-650 transition-all cursor-pointer shadow-lg"
+                      >
+                        Use OTP
+                      </button>
+                    )}
+                  </div>
+                  {authTab === 'signin' && (
+                    <p className="text-[8px] text-zinc-500 font-mono text-center px-4 leading-relaxed mt-2">
+                      If you've forgotten your password or have invalid credentials, use OTP to securely login with an 8-digit emailed code.
+                    </p>
+                  )}
+                </div>
               </form>
             </div>
           ) : (
