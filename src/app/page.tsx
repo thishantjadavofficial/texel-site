@@ -112,10 +112,8 @@ const convertAndCompressFile = async (
           let masterBlob = jpegBlob;
           let selectedFormat = 'JPEG';
 
-          if (pngBlob.size < jpegBlob.size) {
-            masterBlob = pngBlob;
-            selectedFormat = 'PNG';
-          }
+          // User requested: "keep or update that any format to jpg format conversion on browser itself"
+          // So we no longer fallback to PNG even if it is smaller.
 
           const FOUR_MB = 4 * 1024 * 1024;
           if (masterBlob.size > FOUR_MB) {
@@ -652,7 +650,8 @@ export default function TexelMVPApp() {
             shouldCreateUser: true,
             data: {
               name: authName || authEmail.split('@')[0],
-              region: authRegion
+              region: authRegion,
+              role: 'designer'
             }
           }
         });
