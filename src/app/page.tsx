@@ -778,8 +778,8 @@ export default function TexelMVPApp() {
         <div className="w-full max-w-md bg-zinc-950/60 backdrop-blur-xl border border-white/[0.04] rounded-3xl p-8 shadow-2xl relative z-10 space-y-6 text-left">
           
           <div className="space-y-2 border-b border-white/[0.04] pb-5 text-center">
-            <div className="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center mx-auto shadow-xl mb-3">
-              <Layers className="w-5 h-5" />
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto shadow-xl mb-3 overflow-hidden border border-white/10">
+              <img src="/texel-logo.jpg" alt="Texel Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-3xl font-black tracking-tight text-white uppercase font-display hover-expand-text cursor-default">
               TEXEL.
@@ -1017,8 +1017,8 @@ export default function TexelMVPApp() {
       <header className="sticky top-0 z-45 w-full bg-[#050507]/80 backdrop-blur-xl border-b border-white/[0.04] px-6 md:px-12 py-5 flex items-center justify-between">
         <div className="flex items-center gap-10">
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveTab('feed')}>
-            <div className="w-8 h-8 rounded-xl bg-white text-black flex items-center justify-center transition-all duration-350 group-hover:scale-105">
-              <Layers className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-350 group-hover:scale-105 overflow-hidden border border-white/10">
+              <img src="/texel-logo.jpg" alt="Texel Logo" className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
               <span className="text-lg font-black tracking-tight text-white uppercase hover-expand-text">
@@ -1953,7 +1953,10 @@ export default function TexelMVPApp() {
       <footer className="w-full border-t border-white/[0.04] py-10 px-6 text-center text-[9px] text-zinc-600 font-mono mt-auto relative z-10">
         <div className="flex items-center justify-center gap-1.5 mb-2">
           <span>Created for</span>
-          <span className="text-white font-black hover-expand-text tracking-wide uppercase">Texel</span>
+          <span className="text-white font-black hover-expand-text tracking-wide uppercase flex items-center gap-1.5">
+            <img src="/texel-logo.jpg" alt="Texel Logo" className="w-4 h-4 rounded-sm object-cover" />
+            Texel
+          </span>
           <span>with</span>
           <Heart className="w-3.5 h-3.5 text-red-500 animate-pulse fill-red-500" />
           <span>&</span>
