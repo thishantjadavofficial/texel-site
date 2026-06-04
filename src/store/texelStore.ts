@@ -252,12 +252,11 @@ export const useTexelStore = create<TexelState>((set, get) => ({
 
   // Load Active Designs
   loadDesigns: async () => {
-    const { supabaseConnected } = get();
-    if (!supabaseConnected) {
-      set({ designs: [] });
-      return;
-    }
-
+    set({ loading: true });
+    
+    // Refresh session to ensure we use valid tokens for RLS
+    await supabase.auth.getSession();
+    
     try {
       const { data, error } = await supabase
         .from('designs')
@@ -505,7 +504,7 @@ export const useTexelStore = create<TexelState>((set, get) => ({
     // Verify active session to avoid UUID format or RLS issues when using bypass/guest profiles
     const { data: sessionData } = await supabase.auth.getSession();
 
-    if (supabaseConnected && user && sessionData?.session) {
+    if (user && sessionData?.session) {
       try {
         const authUserId = sessionData?.session?.user?.id || user.id;
 

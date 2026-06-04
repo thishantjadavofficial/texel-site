@@ -700,29 +700,8 @@ export default function TexelMVPApp() {
         if (error) throw error;
       }
     } catch (err: any) {
-      console.warn('Real Supabase Auth unavailable. Activating secure sandbox auth bypass:', err.message);
-      
-      // Resilient Fallback: If DB tables or Auth are not migrated, instantly log in as sandbox bypass user!
-      const fallbackUser = {
-        id: typeof window !== 'undefined' && window.crypto?.randomUUID 
-          ? window.crypto.randomUUID() 
-          : `00000000-0000-4000-a000-${Date.now().toString().slice(-12).padStart(12, '0')}`,
-        email: authEmail,
-        hasAcceptedTc: false,
-        createdAt: new Date().toISOString(),
-        name: authName || authEmail.split('@')[0],
-        bio: 'Verified member.',
-        organization: 'Loom Studio',
-        region: authRegion,
-        millTier: 'Elite Weaver' as const
-      };
-      
-      useTexelStore.setState({ user: fallbackUser });
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        colors: ['#6366f1', '#10b981']
-      });
+      console.error('Authentication error:', err.message);
+      setAuthError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setAuthLoading(false);
     }
